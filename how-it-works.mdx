@@ -1,0 +1,197 @@
+---
+title: "How it works"
+description: "Understand the hook lifecycle, memory sync, and async processing that powers Claude Subconscious."
+---
+
+Claude Subconscious uses four Claude Code hooks to create a continuous feedback loop between Claude Code and a Letta background agent. After each response, the transcript is sent to the agent. Before each prompt, the agent's messages and memory are injected back into context.
+
+## System architecture
+
+```
+┌─────────────┐          ┌──────────────────────────┐
+│ Claude Code │◄────────►│ Letta Agent (background)  │
+└─────────────┘          │                          │
+       │                 │  Tools: Read, Grep, Glob │
+       │                 │  Memory: persistent       │
+       │                 │  Web: search, fetch       │
+       │                 └──────────────────────────┘
+       │                        │
+       │   Session Start        │
+       ├───────────────────────►│ New session notification
+       │                        │
+       │   Before each prompt   │
+       │◄───────────────────────┤ Whispers guidance → stdout
+       │                        │
+       │   Before each tool use │
+       │◄───────────────────────┤ Mid-workflow updates → stdout
+       │                        │
+       │   After each response  │
+       ├───────────────────────►│ Transcript → SDK session (async)
+       │                        │  ↳ Reads files, updates memory
+```
+
+## Hook lifecycle
+
+The plugin registers four hooks in `hooks/hooks.json`:
+
+| Hook | Script(s) | Timeout | Purpose |
+|------|-----------|---------|---------|
+| `SessionStart` | `session_start.ts` (5s) + `sync_letta_memory.ts` (10s) | 5s + 10s | Notifies agent, primes context for first prompt |
+| `UserPromptSubmit` | `sync_letta_memory.ts` | 10s | Injects memory + messages via stdout |
+| `PreToolUse` | `pretool_sync.ts` | 5s | Mid-workflow updates via `additionalContext` |
+| `Stop` | `send_messages_to_letta.ts` | 120s | Spawns SDK worker to send transcript (async) |
+
+<Steps>
+  <Step title="SessionStart">
+    When a new Claude Code session begins, `session_start.ts` runs:
+
+    - Creates a new Letta conversation (or reuses one if the session ID is already mapped)
+    - Sends a session start notification to the agent with project name, path, session ID, and timestamp
+    - Cleans up any legacy `<letta>` content from CLAUDE.md
+    - Saves session state to `.letta/claude/` for the other hooks to reference
+
+    The notification sent to the agent looks like:
+
+    ```xml
+    <claude_code_session_start>
+    <project>my-project</project>
+    <path>/Users/you/code/my-project</path>
+    <session_id>abc123</session_id>
+    <timestamp>2026-01-14T12:00:00Z</timestamp>
+    <sdk_tools_mode>read-only</sdk_tools_mode>
+
+    <context>
+    A new Claude Code session has begun. I'll be sending you updates as the session progresses.
+
+    Tool access: Read-only tool access — you can Read, Grep, Glob files and search the web. No writes.
+    Use your tools to explore the codebase at /Users/you/code/my-project when processing transcripts.
+    </context>
+    </claude_code_session_start>
+    ```
+
+    `SessionStart` also runs `sync_letta_memory.ts` immediately after with a 10s timeout to prime the context for the first prompt.
+  </Step>
+  <Step title="UserPromptSubmit">
+    Before each prompt is processed, `sync_letta_memory.ts` runs:
+
+    - Fetches the agent's current memory blocks and new assistant messages from the conversation history
+    - Outputs content to stdout, which Claude Code injects into the prompt context
+
+    What gets injected depends on the [mode](/configuration/modes):
+
+    - **`whisper` mode** (default): only new messages from Sub are injected
+    - **`full` mode**: on the first prompt, all memory blocks are injected; on subsequent prompts, only changed blocks are shown as diffs
+  </Step>
+  <Step title="PreToolUse">
+    Before each tool use within a session, `pretool_sync.ts` checks for updates:
+
+    - Compares current memory block values and message state to the last sync
+    - If anything has changed, injects updates via `additionalContext`
+    - If nothing has changed, exits silently with no output
+
+    This allows the Letta agent's mid-session observations to reach Claude Code mid-workflow, not just at the start of each prompt.
+  </Step>
+  <Step title="Stop">
+    After each Claude Code response, `send_messages_to_letta.ts` runs as an **async hook** — it exits immediately without blocking Claude Code:
+
+    1. Reads the session transcript (JSONL format)
+    2. Extracts new user messages, assistant responses, thinking blocks, and tool usage since the last processed index
+    3. Formats the transcript as an XML payload
+    4. Writes the payload to a temp file
+    5. Spawns `send_worker_sdk.ts` as a detached background process
+    6. Exits immediately
+
+    The background worker (`send_worker_sdk.ts`) then:
+
+    - Opens a Letta Code SDK session for the conversation
+    - Sends the transcript to the agent
+    - Streams the agent's full response (which may include tool calls like Read, Grep, Glob)
+    - Updates the session state file with the new `lastProcessedIndex`
+    - Cleans up the temp payload file
+  </Step>
+</Steps>
+
+## What gets injected into context
+
+All content is injected via stdout — nothing is written to disk.
+
+### Messages (whisper + full mode)
+
+Messages from the Subconscious agent are injected before each prompt:
+
+```xml
+<letta_message from="Subconscious" timestamp="2026-01-26T20:37:14+00:00">
+You've asked about error handling in async contexts three times this week.
+Consider reviewing error handling architecture holistically.
+</letta_message>
+```
+
+If there are new messages, Claude Code is also instructed to briefly acknowledge what Sub said so the user knows it was received.
+
+### Memory blocks (full mode only)
+
+On the first prompt of a session in `full` mode, all memory blocks are injected:
+
+```xml
+<letta_context>
+Subconscious agent "herald" is observing this session.
+It can read files, search your codebase, and browse the web (read-only).
+Supervise: https://app.letta.com/agents/agent-xxx?conversation=conv-xxx
+</letta_context>
+
+<letta_memory_blocks>
+<user_preferences description="Learned coding style and preferences.">
+Prefers explicit type annotations. Uses pnpm, not npm.
+</user_preferences>
+<project_context description="Codebase knowledge and architecture.">
+Working on claude-subconscious plugin. TypeScript, ESM modules.
+</project_context>
+</letta_memory_blocks>
+```
+
+On subsequent prompts, only changed blocks are shown as diffs:
+
+```xml
+<letta_memory_update>
+<pending_items status="modified">
+- Phase 1 test harness complete
++ Release prep complete: README fixed, .gitignore updated
+</pending_items>
+</letta_memory_update>
+```
+
+## The async worker pattern
+
+The Stop hook uses a two-process pattern to avoid blocking Claude Code:
+
+```
+Stop hook (send_messages_to_letta.ts)
+  │
+  ├── Parse transcript, format payload
+  ├── Write payload to $TMPDIR/letta-claude-sync-$UID/payload-<session>-<ts>.json
+  ├── Spawn send_worker_sdk.ts --detached
+  └── Exit immediately (hook returns, Claude Code continues)
+
+Background worker (send_worker_sdk.ts)
+  │
+  ├── Load payload file
+  ├── Open Letta Code SDK session (resumeSession)
+  ├── Send transcript message to agent
+  ├── Stream agent response (may invoke Read, Grep, Glob, web_search)
+  ├── Update session state (lastProcessedIndex)
+  └── Delete payload file
+```
+
+The worker is spawned with `detached: true` and `stdio: 'ignore'`, then `unref()`'d so it outlives the parent hook process. On Windows, a `silent-launcher.exe` is used to avoid console window flashes.
+
+## Two-way communication
+
+Claude Code can address the Subconscious agent directly in responses. Because the full transcript — including assistant messages — is sent to the agent after each response, Sub sees everything Claude Code writes. If Claude Code addresses Sub directly, Sub may respond on the next sync.
+
+Sub is configured to be observational and concise:
+
+- **Observational** — "I noticed..." not "You should..."
+- **Concise** — technical, no filler
+- **Present but not intrusive** — empty guidance is fine; it won't manufacture content
+
+For more on the Subconscious agent's memory architecture and communication style, see [Default Agent](/agent/default-agent).

@@ -1,0 +1,113 @@
+---
+title: "Custom agents"
+description: "Use your own Letta agent instead of the bundled Subconscious agent."
+---
+
+By default, Claude Subconscious auto-imports a bundled agent on first use. If you have your own Letta agent — one you've built, customized, or want to use per-project — you can point the plugin at it using `LETTA_AGENT_ID`.
+
+## Setting a custom agent
+
+```bash
+export LETTA_AGENT_ID="agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+When `LETTA_AGENT_ID` is set, the plugin skips the auto-import entirely and uses your agent directly. Your agent will use its own existing memory architecture — the [eight-block structure](/agent/memory-blocks) is specific to the bundled Subconscious agent.
+
+## Agent ID format
+
+The agent ID must be a UUID with the `agent-` prefix:
+
+```
+agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
+For example:
+
+```
+agent-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+The plugin validates this format before making any API calls. If the format is invalid, you'll see:
+
+```
+Invalid LETTA_AGENT_ID format: "MyAgent"
+
+The agent ID must be a UUID with the "agent-" prefix.
+Expected format: agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Example: agent-a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+<Warning>
+  Common mistakes:
+  - Using the agent's friendly name (e.g., `"Memo"`) instead of the UUID
+  - Missing the `agent-` prefix (e.g., `"a1b2c3d4-e5f6-7890-abcd-ef1234567890"`)
+</Warning>
+
+## Finding your agent ID
+
+<Steps>
+  <Step title="Go to app.letta.com">
+    Open the [Letta Agent Development Environment](https://app.letta.com) in your browser.
+  </Step>
+  <Step title="Select your agent">
+    Click on the agent you want to use.
+  </Step>
+  <Step title="Copy the ID">
+    The agent ID appears in the URL and in the agent settings panel. It starts with `agent-` followed by a UUID.
+  </Step>
+</Steps>
+
+## Per-project agents with direnv
+
+The global `LETTA_AGENT_ID` uses one agent for all projects. To use different agents per project, set the variable in a `.envrc` file using [direnv](https://direnv.net/):
+
+```bash
+# .envrc in project directory
+export LETTA_AGENT_ID="agent-xxx-for-this-project"
+```
+
+With direnv installed, the variable is automatically set when you `cd` into the project directory and unset when you leave.
+
+This is useful when you want:
+- A domain-specific agent for a client project
+- An agent pre-loaded with context about a specific codebase
+- Separate memory histories for different projects
+
+<Tip>
+  You can also use this approach with `LETTA_BASE_URL` to point different projects at different Letta servers.
+</Tip>
+
+## Using the Agent Development Environment
+
+The [ADE at app.letta.com](https://app.letta.com) lets you:
+
+- Inspect your agent's current memory blocks
+- Edit memory block contents directly
+- Watch the agent process transcripts in real time
+- Change the agent's model
+- Review the full conversation history
+
+This is the primary interface for supervising and tuning a custom agent's behavior.
+
+## Custom agent memory architecture
+
+When you use a custom agent, the plugin sends the same session transcripts and expects the same response format (`<letta_message>` blocks for guidance). However, your agent's memory structure is entirely up to you — it doesn't need to follow the eight-block layout of the bundled agent.
+
+The plugin reads whatever memory blocks your agent exposes and injects them according to the configured [mode](/configuration/modes).
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Default agent" href="/agent/default-agent">
+    How the bundled agent works and when it's used.
+  </Card>
+  <Card title="Memory blocks" href="/agent/memory-blocks">
+    The memory structure of the bundled Subconscious agent.
+  </Card>
+  <Card title="Multi-project" href="/configuration/multi-project">
+    One agent across many projects vs. per-project agents.
+  </Card>
+  <Card title="Self-hosted" href="/guides/self-hosted">
+    Run your own Letta server with LETTA_BASE_URL.
+  </Card>
+</CardGroup>

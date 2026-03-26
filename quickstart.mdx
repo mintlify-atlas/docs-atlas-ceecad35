@@ -1,80 +1,137 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Install Claude Subconscious and connect it to your Letta agent in minutes."
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+- **Node.js 18+** — required to run the hook scripts
+- **Claude Code** — the plugin hooks into Claude Code's lifecycle events
+- **Letta account** — get your API key at [app.letta.com](https://app.letta.com)
 
-### Step 1: Set up your local environment
+## Install the plugin
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Tabs>
+  <Tab title="From marketplace (recommended)">
+    <Steps>
+      <Step title="Add from marketplace">
+        Run these two commands inside Claude Code:
 
-### Step 2: Deploy your changes
+        ```
+        /plugin marketplace add letta-ai/claude-subconscious
+        /plugin install claude-subconscious@claude-subconscious
+        ```
+      </Step>
+      <Step title="Set your API key">
+        Export your Letta API key in your shell:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+        ```bash
+        export LETTA_API_KEY="your-api-key"
+        ```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+        Get your key from [app.letta.com](https://app.letta.com). Add this line to your `~/.bashrc` or `~/.zshrc` to make it permanent.
+      </Step>
+      <Step title="Start a new session">
+        Open a new Claude Code session. On first run, the plugin automatically imports the bundled Subconscious agent and saves its ID for future use. You'll see the agent name, ID, and a supervision link printed to the terminal.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="From source">
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/letta-ai/claude-subconscious.git
+        cd claude-subconscious
+        npm install
+        ```
+      </Step>
+      <Step title="Enable the plugin">
+        From inside the cloned directory, run in Claude Code:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+        ```
+        /plugin enable .
+        ```
 
-### Step 3: Go live
+        To enable globally for all projects:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+        ```
+        /plugin enable --global .
+        ```
 
-## Next steps
+        If enabling from a different directory, use the full path to the cloned repo.
+      </Step>
+      <Step title="Set your API key">
+        ```bash
+        export LETTA_API_KEY="your-api-key"
+        ```
 
-Now that you have your docs running, explore these key features:
+        Get your key from [app.letta.com](https://app.letta.com). Add to your shell profile to make it permanent.
+      </Step>
+      <Step title="Start a new session">
+        Open a new Claude Code session. The plugin will auto-import the bundled agent and display connection info on startup.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
-<CardGroup cols={2}>
+## Required configuration
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+Only one environment variable is required:
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+```bash
+export LETTA_API_KEY="your-api-key"
+```
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+Everything else is handled automatically. The plugin will:
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+1. Query available models on your Letta server
+2. Import the bundled Subconscious agent if no agent is configured
+3. Save the agent ID to `~/.letta/claude-subconscious/config.json` for future sessions
 
-</CardGroup>
+For additional configuration options — modes, model overrides, self-hosted servers — see [Environment Variables](/configuration/environment-variables).
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## First run expectations
+
+<Info>
+  On first use, the agent starts with minimal context. It takes a few sessions before it has enough signal to provide useful guidance. Give it time — it reads your code, learns your patterns, and gets smarter the more it observes.
+</Info>
+
+During the first session you should see a startup banner printed directly to your terminal (not captured by Claude) with:
+
+- Agent name and ID
+- Model, mode, and SDK tools settings
+- A supervision link to `app.letta.com` (Letta Cloud only)
+
+After that:
+
+- A session start notification is sent to the Letta agent
+- Memory and messages are injected into Claude's context before each prompt (may be empty at first)
+- The transcript is sent to the agent asynchronously after each response
+
+## Updating the plugin
+
+<CodeGroup>
+  ```bash Marketplace
+  /plugin marketplace update
+  /plugin update claude-subconscious@claude-subconscious
+  ```
+  ```bash From source
+  git pull
+  npm install
+  ```
+</CodeGroup>
+
+## Linux: tmpfs workaround
+
+<Warning>
+  If plugin installation fails with `EXDEV: cross-device link not permitted`, your `/tmp` is on a different filesystem than your home directory. This is common on Ubuntu, Fedora, and Arch Linux.
+</Warning>
+
+Set `TMPDIR` to a path on the same filesystem as your home directory:
+
+```bash
+mkdir -p ~/.claude/tmp
+export TMPDIR="$HOME/.claude/tmp"
+```
+
+Add both lines to your `~/.bashrc` or `~/.zshrc` to make the fix permanent. This works around a [known Claude Code bug](https://github.com/anthropics/claude-code/issues/14799).

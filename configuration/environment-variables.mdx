@@ -1,0 +1,159 @@
+---
+title: "Environment variables"
+description: "All environment variables supported by Claude Subconscious."
+---
+
+Claude Subconscious is configured entirely through environment variables. Set them in your shell profile, a `.env` file, or via [direnv](https://direnv.net/) for per-project overrides.
+
+## Required
+
+<ParamField path="LETTA_API_KEY" type="string" required>
+  Your Letta authentication key. Get it from [app.letta.com](https://app.letta.com).
+
+  ```bash
+  export LETTA_API_KEY="your-api-key"
+  ```
+</ParamField>
+
+## Mode and behavior
+
+<ParamField path="LETTA_MODE" type="string" default="whisper">
+  Controls what Subconscious injects into Claude's context before each prompt.
+
+  | Value | What Claude sees |
+  |-------|------------------|
+  | `whisper` | Only `<letta_message>` blocks from the agent |
+  | `full` | Memory blocks + messages |
+  | `off` | Nothing — all hooks disabled |
+
+  ```bash
+  export LETTA_MODE="whisper"
+  ```
+
+  See [Modes](/configuration/modes) for a full explanation of each value.
+</ParamField>
+
+<ParamField path="LETTA_SDK_TOOLS" type="string" default="read-only">
+  Controls which client-side tools the Subconscious agent can use when processing transcripts.
+
+  | Value | Tools available |
+  |-------|-----------------|
+  | `read-only` | `Read`, `Grep`, `Glob`, `web_search`, `fetch_webpage` |
+  | `full` | All tools including `Bash`, `Edit`, `Write`, `Task` |
+  | `off` | None — memory operations only |
+
+  ```bash
+  export LETTA_SDK_TOOLS="read-only"
+  ```
+
+  <Warning>
+    `full` mode gives Subconscious the ability to modify files and spawn sub-agents. Use with caution.
+  </Warning>
+</ParamField>
+
+## Agent selection
+
+<ParamField path="LETTA_AGENT_ID" type="string">
+  The UUID of the Letta agent to use. If not set, the plugin automatically imports the bundled Subconscious agent on first use and saves the ID to `~/.letta/claude-subconscious/config.json`.
+
+  ```bash
+  export LETTA_AGENT_ID="agent-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  ```
+
+  **Format:** `agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+
+  The value must match the regex:
+  ```
+  agent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+  ```
+
+  **Common mistakes:**
+
+  - Using the agent's friendly name (e.g., `Memo`) instead of the UUID
+  - Omitting the `agent-` prefix
+  - Copying the conversation ID instead of the agent ID
+
+  <Tip>
+    To find your agent ID: go to [app.letta.com](https://app.letta.com), select your agent, and copy the ID from the URL or agent settings.
+  </Tip>
+
+  If the format is invalid, the plugin logs an error and refuses to start rather than silently using the wrong agent.
+</ParamField>
+
+## Server connection
+
+<ParamField path="LETTA_BASE_URL" type="string" default="https://api.letta.com">
+  Base URL for your Letta server. Override this when running a self-hosted Letta instance.
+
+  ```bash
+  export LETTA_BASE_URL="http://localhost:8283"
+  ```
+
+  Trailing slashes are stripped automatically. The plugin appends `/v1` to construct API endpoints.
+
+  See [Self-hosted Letta](/guides/self-hosted) for setup instructions.
+</ParamField>
+
+## Model configuration
+
+<ParamField path="LETTA_MODEL" type="string">
+  Override the model used by your Subconscious agent. Uses the `provider/model` handle format.
+
+  ```bash
+  export LETTA_MODEL="anthropic/claude-sonnet-4-5"
+  ```
+
+  If the specified model is not available on your Letta server, the plugin logs a warning and falls back to auto-selection.
+
+  If not set, the plugin auto-detects and selects the best available model. See [Model configuration](/configuration/model-configuration).
+</ParamField>
+
+<ParamField path="LETTA_CONTEXT_WINDOW" type="number">
+  Override the agent's context window size in tokens. Useful when pairing `LETTA_MODEL` with a model that has a large context window differing from the server default.
+
+  ```bash
+  export LETTA_CONTEXT_WINDOW="1048576"   # 1M tokens
+  ```
+
+  The value must be a positive integer. Non-numeric values are ignored.
+</ParamField>
+
+## State management
+
+<ParamField path="LETTA_HOME" type="string" default="current working directory">
+  Base directory for per-project state files. The plugin creates `{LETTA_HOME}/.letta/claude/` to store conversation mappings and session state.
+
+  ```bash
+  export LETTA_HOME="$HOME"   # Consolidate all state to ~/.letta/
+  ```
+
+  By default, state is stored in the current working directory (`.letta/claude/` relative to where Claude Code is opened). Setting `LETTA_HOME=$HOME` keeps everything in one place regardless of which project you're in.
+
+  See [State management](/guides/state-management) and [Multi-project usage](/configuration/multi-project) for more detail.
+</ParamField>
+
+## Debug
+
+<ParamField path="LETTA_DEBUG" type="string">
+  Set to `"1"` to enable verbose debug logging in `sync_letta_memory.ts` and `pretool_sync.ts`. Debug output is written to stderr.
+
+  ```bash
+  export LETTA_DEBUG="1"
+  ```
+
+  Useful when investigating hook behavior without reading full log files.
+</ParamField>
+
+## Quick reference
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `LETTA_API_KEY` | string | **required** | Letta authentication key |
+| `LETTA_MODE` | `whisper` \| `full` \| `off` | `whisper` | Controls injection mode |
+| `LETTA_AGENT_ID` | string | auto | Agent UUID (`agent-xxxxxxxx-...`) |
+| `LETTA_BASE_URL` | string | `https://api.letta.com` | Letta server base URL |
+| `LETTA_MODEL` | string | auto-detected | Model handle (e.g. `anthropic/claude-sonnet-4-5`) |
+| `LETTA_CONTEXT_WINDOW` | number | server default | Context window size in tokens |
+| `LETTA_HOME` | string | cwd | Base dir for state files |
+| `LETTA_SDK_TOOLS` | `read-only` \| `full` \| `off` | `read-only` | Client-side tool access |
+| `LETTA_DEBUG` | `"1"` | unset | Enable verbose debug logging |

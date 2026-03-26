@@ -1,0 +1,164 @@
+---
+title: "Memory blocks"
+description: "The eight memory blocks the Subconscious agent maintains to track your preferences and project context."
+---
+
+The default Subconscious agent maintains eight named memory blocks — persistent storage units that survive across sessions, projects, and time. Each block has a specific purpose and is updated independently as the agent learns.
+
+<Note>
+  Memory blocks belong to the **default bundled agent**. If you set `LETTA_AGENT_ID` to use a custom agent, that agent uses its own existing memory architecture instead.
+</Note>
+
+## The eight blocks
+
+<Accordion title="core_directives — Role definition and behavioral guidelines">
+  Contains the agent's fundamental instructions: who it is, what it does, and how it should behave. This block is set at import time and rarely changes — it defines the Subconscious persona, communication style (observational, concise, non-intrusive), and the boundaries of what the agent should and shouldn't do.
+
+  This block is not synced to Claude Code — it's internal guidance for the agent itself.
+</Accordion>
+
+<Accordion title="guidance — Active guidance for the next session">
+  The **most important block** for day-to-day use. Contains the agent's current guidance to surface before the next Claude Code session.
+
+  When Subconscious wants to say something — a reminder, a pattern it noticed, a follow-up item — it writes guidance here. The `UserPromptSubmit` hook also fetches new assistant messages the agent sent in the conversation, injecting them as `<letta_message>` blocks. In `full` mode, the `guidance` block itself is also injected directly as part of the `<letta_memory_blocks>` payload.
+
+  Example content:
+  ```
+  You've been debugging the auth refresh flow across multiple sessions.
+  The root issue may be in token expiry handling — see src/auth/refresh.ts:42.
+  ```
+</Accordion>
+
+<Accordion title="user_preferences — Learned coding style, tool preferences, communication style">
+  Stores what the agent has learned about how you work: your preferred tools, code style conventions, communication preferences, and anything you've explicitly stated or repeatedly demonstrated.
+
+  Example content:
+  ```
+  Prefers explicit type annotations.
+  Uses pnpm, not npm.
+  Wants concise responses — no preamble.
+  Prefers functional patterns over class-based.
+  ```
+
+  Updated when the agent observes corrections ("don't use `any` here"), explicit preferences ("always use `const`"), or consistent patterns across multiple sessions.
+</Accordion>
+
+<Accordion title="project_context — Codebase knowledge, architecture decisions, known gotchas">
+  The agent's understanding of the current project: what it's built with, how it's structured, architectural decisions that have been made, and gotchas the agent has discovered by reading the code.
+
+  Example content:
+  ```
+  Working on claude-subconscious plugin. TypeScript, ESM modules.
+  Hooks live in /hooks/, scripts in /scripts/.
+  The Stop hook is async — it spawns a detached background worker.
+  Known issue: tmpfs conflict on Linux when TMPDIR is on a different filesystem.
+  ```
+
+  Populated by the agent reading files with `Read`, `Grep`, and `Glob` while processing transcripts.
+</Accordion>
+
+<Accordion title="session_patterns — Recurring behaviors, time-based patterns, common struggles">
+  Tracks what the agent has noticed about how sessions tend to go: what you work on repeatedly, where you get stuck, what kinds of questions come up, and any time-based patterns.
+
+  Example content:
+  ```
+  Frequent debugging sessions around async error handling.
+  Regularly revisits the same auth files — possible architectural debt.
+  Tends to work in focused 2-3 hour blocks.
+  ```
+
+  This block powers the agent's ability to surface pattern-based guidance ("You've asked about error handling in async contexts three times this week").
+</Accordion>
+
+<Accordion title="pending_items — Unfinished work, explicit TODOs, follow-up items">
+  Tracks work that was started but not finished, things you said you'd come back to, and explicit TODOs the agent observed in the transcript.
+
+  Example content:
+  ```
+  - Add integration tests for the refresh token flow
+  - Revisit the Windows silent-launcher approach after next release
+  - Follow up on the EXDEV tmpfs bug report
+  ```
+
+  This block is often updated as diffs — items are added when work begins, modified as status changes, and removed when complete.
+</Accordion>
+
+<Accordion title="self_improvement — Guidelines for evolving memory architecture over time">
+  Meta-instructions the agent uses to improve how it manages its own memory over time. Contains guidelines about when to update blocks, how to avoid redundancy, and how to keep the memory useful rather than cluttered.
+
+  This block is internal — it guides the agent's memory management behavior and is not synced to Claude Code.
+</Accordion>
+
+<Accordion title="tool_guidelines — How to use available tools (memory, filesystem, web search)">
+  Instructions for the agent about how to use its available tools effectively: when to read files vs. use grep, how to structure memory updates, when to search the web, and how to avoid wasteful tool usage.
+
+  This block is internal — it guides tool usage and is not synced to Claude Code.
+</Accordion>
+
+## How memory sync works
+
+Before each prompt, the `UserPromptSubmit` hook fetches the agent's current memory state and injects it into Claude's context via stdout.
+
+**In `whisper` mode** (default), only new assistant messages from the Letta conversation are surfaced — delivered as `<letta_message>` blocks if the agent has responded since the last sync:
+
+```xml
+<letta_message from="Subconscious" timestamp="2026-01-26T20:37:14+00:00">
+You've asked about error handling in async contexts three times this week.
+Consider reviewing error handling architecture holistically.
+</letta_message>
+```
+
+**In `full` mode**, all memory blocks are injected on the first prompt of a session:
+
+```xml
+<letta_context>
+Subconscious agent "herald" is observing this session.
+It can read files, search your codebase, and browse the web (read-only).
+Supervise: https://app.letta.com/agents/agent-xxx?conversation=conv-xxx
+</letta_context>
+
+<letta_memory_blocks>
+<user_preferences description="Learned coding style and preferences.">
+Prefers explicit type annotations. Uses pnpm, not npm.
+</user_preferences>
+<project_context description="Codebase knowledge and architecture.">
+Working on claude-subconscious plugin. TypeScript, ESM modules.
+</project_context>
+</letta_memory_blocks>
+```
+
+On subsequent prompts in the same session (`full` mode), only blocks that have changed are shown as diffs:
+
+```xml
+<letta_memory_update>
+<pending_items status="modified">
+- Phase 1 test harness complete
++ Release prep complete: README fixed, .gitignore updated
+</pending_items>
+</letta_memory_update>
+```
+
+<Tip>
+  Use `full` mode when you want Claude to have complete awareness of the agent's memory state. Use `whisper` (default) for a lighter-weight experience where Sub only speaks when it has something to say.
+</Tip>
+
+## Custom agent memory
+
+If you configure a custom agent with `LETTA_AGENT_ID`, the plugin uses whatever memory architecture that agent has. The eight-block structure above is specific to the bundled Subconscious agent.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Default agent" href="/agent/default-agent">
+    How the bundled Subconscious agent is set up and what it does.
+  </Card>
+  <Card title="Modes" href="/configuration/modes">
+    Control what gets injected — whisper, full, or off.
+  </Card>
+  <Card title="Custom agents" href="/agent/custom-agents">
+    Bring your own Letta agent with a different memory architecture.
+  </Card>
+  <Card title="State management" href="/guides/state-management">
+    Where session state and conversation mappings are stored.
+  </Card>
+</CardGroup>

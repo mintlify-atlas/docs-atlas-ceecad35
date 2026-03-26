@@ -1,0 +1,130 @@
+---
+title: "Modes"
+description: "Control what Subconscious injects into Claude's context with LETTA_MODE."
+---
+
+The `LETTA_MODE` environment variable controls what Claude sees before each prompt. Three modes are available: `whisper` (default), `full`, and `off`.
+
+<Note>
+  Subconscious **never writes to CLAUDE.md** in any mode. All content is injected via stdout into the prompt context and exists only for that prompt. If you have an existing CLAUDE.md with legacy `<letta>` content from an older version, it will be cleaned up automatically on the next session start.
+</Note>
+
+## Mode comparison
+
+| Mode | What Claude sees | Use case |
+|------|-----------------|----------|
+| `whisper` | Only `<letta_message>` blocks | Lightweight — Sub speaks when it has something to say |
+| `full` | Memory blocks + messages | Full context — blocks on first prompt, diffs after |
+| `off` | Nothing | Disable hooks temporarily |
+
+## whisper (default)
+
+In `whisper` mode, only messages that Subconscious explicitly sends to Claude are injected. If the agent has nothing to say, nothing is injected — Claude's context is completely unaffected.
+
+This is the recommended mode for most users. It keeps overhead low and only surfaces guidance when Subconscious has something meaningful to contribute.
+
+**Example of what Claude sees:**
+
+```xml
+<letta_message from="Subconscious" timestamp="2026-01-26T20:37:14+00:00">
+You've asked about error handling in async contexts three times this week.
+Consider reviewing error handling architecture holistically.
+</letta_message>
+```
+
+The `from` attribute identifies the agent by name. The `timestamp` is an ISO 8601 datetime in UTC.
+
+## full
+
+In `full` mode, Subconscious injects the complete agent context:
+
+- **First prompt of a session:** All memory blocks plus any pending messages
+- **Subsequent prompts:** Only changed memory blocks (as diffs) plus any new messages
+
+This gives Claude a complete picture of what Subconscious knows — your preferences, project context, pending items, and more.
+
+### First prompt (full blocks)
+
+On the first prompt of each session, Claude receives the agent context header and all memory blocks:
+
+```xml
+<letta_context>
+Subconscious agent "herald" is observing this session.
+It can read files, search your codebase, and browse the web (read-only).
+Supervise: https://app.letta.com/agents/agent-xxx?conversation=conv-xxx
+</letta_context>
+
+<letta_memory_blocks>
+<user_preferences description="Learned coding style and preferences.">
+Prefers explicit type annotations. Uses pnpm, not npm.
+</user_preferences>
+<project_context description="Codebase knowledge and architecture.">
+Working on claude-subconscious plugin. TypeScript, ESM modules.
+</project_context>
+</letta_memory_blocks>
+```
+
+The `<letta_context>` block contains the agent name, its capability description (determined by `LETTA_SDK_TOOLS`), and a supervision URL for Letta Cloud users.
+
+### Subsequent prompts (diffs)
+
+On later prompts, only blocks that changed since the last sync are shown:
+
+```xml
+<letta_memory_update>
+<pending_items status="modified">
+- Phase 1 test harness complete
++ Release prep complete: README fixed, .gitignore updated
+</pending_items>
+</letta_memory_update>
+```
+
+The diff format uses `-` for removed lines and `+` for added lines. Unchanged blocks are omitted entirely.
+
+## off
+
+In `off` mode, all hooks exit immediately without contacting the Letta server or injecting any content. This is equivalent to disabling the plugin without uninstalling it.
+
+Use `off` when:
+- You need to temporarily disable Subconscious for a session
+- You're debugging Claude Code behavior without Subconscious interference
+- You're working in a sensitive context where you don't want any external calls
+
+```bash
+export LETTA_MODE="off"
+```
+
+<Note>
+  Even in `off` mode, the Stop hook (which sends transcripts to Subconscious) is also disabled. The agent will not receive any updates from sessions run in `off` mode.
+</Note>
+
+## Choosing a mode
+
+<Tabs>
+  <Tab title="whisper (recommended)">
+    Best for everyday use. Sub only speaks when it has something useful to say, keeping Claude's context clean.
+
+    ```bash
+    export LETTA_MODE="whisper"
+    # or omit LETTA_MODE entirely — whisper is the default
+    ```
+  </Tab>
+  <Tab title="full">
+    Best when you want Claude to have full awareness of what Subconscious knows. Useful for complex projects where architecture context and learned preferences are highly relevant.
+
+    ```bash
+    export LETTA_MODE="full"
+    ```
+  </Tab>
+  <Tab title="off">
+    Disables everything. Use for debugging or sensitive sessions.
+
+    ```bash
+    export LETTA_MODE="off"
+    ```
+  </Tab>
+</Tabs>
+
+## Legacy content cleanup
+
+Older versions of the plugin wrote Letta content to CLAUDE.md using `<letta>` tags. When the plugin starts in any mode, it automatically removes any `<letta>` sections from CLAUDE.md. If the file was entirely generated by the plugin, it is deleted. If the file had user-written content, only the Letta sections are removed.

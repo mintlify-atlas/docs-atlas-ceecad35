@@ -1,0 +1,90 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Claude Subconscious",
+  "projectDescription": "A Claude Code plugin that runs a Letta background agent to watch your sessions, build persistent memory, and whisper guidance back before each prompt.",
+  "theme": "luma",
+  "primaryColor": "#848c8e",
+  "lightColor": "#11161e",
+  "darkColor": "#cfd0d2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "how-it-works"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/modes",
+              "configuration/model-configuration",
+              "configuration/multi-project"
+            ]
+          },
+          {
+            "group": "Hooks",
+            "pages": [
+              "hooks/overview",
+              "hooks/session-start",
+              "hooks/user-prompt-submit",
+              "hooks/pre-tool-use",
+              "hooks/stop"
+            ]
+          },
+          {
+            "group": "The Subconscious Agent",
+            "pages": [
+              "agent/default-agent",
+              "agent/memory-blocks",
+              "agent/sdk-tools",
+              "agent/custom-agents"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/debugging",
+              "guides/self-hosted",
+              "guides/state-management"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Persistent memory across Claude Code sessions via Letta agents",
+    "Four Claude Code lifecycle hooks: SessionStart, UserPromptSubmit, PreToolUse, Stop",
+    "Async background processing — never blocks Claude Code",
+    "Client-side SDK tools: Read, Grep, Glob, web search for the agent",
+    "Two injection modes: whisper (messages only) and full (memory blocks + messages)",
+    "Zero-config auto-import of bundled Subconscious agent",
+    "Automatic model detection and fallback selection",
+    "Multi-project support with shared agent brain"
+  ],
+  "publicApiSurface": [
+    "LETTA_API_KEY — Required API key for Letta authentication",
+    "LETTA_MODE — Controls injection mode: whisper | full | off",
+    "LETTA_AGENT_ID — Override the agent to use",
+    "LETTA_BASE_URL — Self-hosted Letta server URL",
+    "LETTA_MODEL — Model override for the agent",
+    "LETTA_CONTEXT_WINDOW — Context window size override",
+    "LETTA_HOME — Base directory for plugin state files",
+    "LETTA_SDK_TOOLS — Client-side tool access: read-only | full | off",
+    "hooks/hooks.json — Hook definitions for Claude Code",
+    "scripts/session_start.ts — SessionStart hook script",
+    "scripts/sync_letta_memory.ts — UserPromptSubmit hook script",
+    "scripts/pretool_sync.ts — PreToolUse hook script",
+    "scripts/send_messages_to_letta.ts — Stop hook script",
+    "scripts/send_worker_sdk.ts — Async background worker",
+    "scripts/agent_config.ts — Agent resolution and model configuration",
+    "scripts/conversation_utils.ts — Shared conversation and state utilities"
+  ]
+}

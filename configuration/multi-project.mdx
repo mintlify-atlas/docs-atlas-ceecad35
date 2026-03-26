@@ -1,0 +1,107 @@
+---
+title: "Multi-project usage"
+description: "Use one Subconscious agent across multiple projects with shared memory."
+---
+
+Claude Subconscious is designed for multi-project use out of the box. One agent brain is shared across all your projects, while each project maintains its own lightweight conversation bookkeeping.
+
+## Architecture
+
+**One agent, many projects.** The Subconscious agent is stored globally. When you use the plugin across different repositories, they all share the same agent brain — the same memory, the same learned preferences, the same project context.
+
+```
+~/.letta/claude-subconscious/config.json  →  ONE agent ID (shared brain)
+                                               ↓
+project-a/.letta/claude/                  →  Project A's conversation threads
+project-b/.letta/claude/                  →  Project B's conversation threads
+project-c/.letta/claude/                  →  Project C's conversation threads
+```
+
+The `.letta/claude/` directories in each project are **conversation bookkeeping**, not separate agents. They store the mapping from Claude Code session IDs to Letta conversation IDs. Memory blocks are shared across all projects.
+
+## File structure
+
+### Global agent config
+
+```
+~/.letta/claude-subconscious/
+└── config.json          # Stores the agent ID (and last configured model)
+```
+
+This file is created automatically on first use when no `LETTA_AGENT_ID` is set.
+
+### Per-project state
+
+```
+your-project/
+└── .letta/
+    └── claude/
+        ├── conversations.json     # Maps session IDs → Letta conversation IDs
+        └── session-{id}.json      # Per-session state (last sync index, conversation ID)
+```
+
+These files are created in the directory where Claude Code is opened (the project root). They are safe to commit to version control — they contain no secrets, only IDs.
+
+## Agent resolution order
+
+Each time a session starts, the plugin resolves the agent ID in this order:
+
+<Steps>
+  <Step title="Environment variable">
+    If `LETTA_AGENT_ID` is set, that agent is used. The format is validated against the expected UUID pattern before use.
+  </Step>
+  <Step title="Saved config">
+    If `~/.letta/claude-subconscious/config.json` exists and contains a valid agent ID, that agent is used.
+  </Step>
+  <Step title="Auto-import">
+    If no agent is configured, the plugin imports the bundled `Subconscious.af` agent, assigns it an ID, and saves it to `~/.letta/claude-subconscious/config.json` for all future sessions.
+  </Step>
+</Steps>
+
+This means zero-config setup: just set `LETTA_API_KEY` and the plugin handles everything else.
+
+## Using a different agent per project
+
+To use a separate agent brain for a specific project, set `LETTA_AGENT_ID` for that project. The recommended approach is [direnv](https://direnv.net/):
+
+```bash
+# .envrc in your project directory
+export LETTA_AGENT_ID="agent-xxx-for-this-project"
+```
+
+Alternatively, set it in your shell before opening Claude Code:
+
+```bash
+export LETTA_AGENT_ID="agent-xxx-for-this-project"
+claude
+```
+
+Each agent maintains its own memory blocks and conversation history independently.
+
+## Consolidating state with LETTA_HOME
+
+By default, per-project state (`.letta/claude/`) is stored in the current working directory. If you'd rather keep all state in one location, set `LETTA_HOME`:
+
+```bash
+export LETTA_HOME="$HOME"
+```
+
+With this setting, all projects write their conversation bookkeeping to `~/.letta/claude/` instead of `./letta/claude/`. This is useful if you don't want `.letta/` directories scattered across your projects, or if you work in directories you don't own.
+
+<Note>
+  `LETTA_HOME` only affects where per-project conversation state is stored. The global agent config (`~/.letta/claude-subconscious/config.json`) is always in your home directory regardless of `LETTA_HOME`.
+</Note>
+
+## Shared memory across projects
+
+Because all projects share one agent, Subconscious can build a cross-project understanding of how you work:
+
+- Preferences learned in one project apply everywhere
+- The agent sees patterns across projects ("you often struggle with auth flows")
+- Pending items from one project are visible when switching to another
+
+If you want strict project isolation, use separate agents via `LETTA_AGENT_ID` as described above.
+
+## Letta Conversations
+
+Each Claude Code session gets its own [Letta Conversation](https://docs.letta.com/guides/agents/conversations/). Conversations are isolated message threads on a shared agent — the agent's memory is shared, but the transcript history is per-session. This is how Subconscious can serve multiple Claude Code sessions in parallel without confusion.

@@ -1,97 +1,74 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Claude Subconscious"
+description: "A background Letta agent that watches your Claude Code sessions, builds persistent memory, and whispers guidance back — without ever blocking your workflow."
 ---
 
-## Setting up
+Claude Subconscious gives Claude Code a long-term memory. A [Letta](https://letta.com) agent runs silently in the background, reading your code, learning your patterns, and surfacing context before each prompt. Claude Code forgets everything between sessions — Subconscious remembers.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the plugin and get your first memory sync running in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="How it works" icon="diagram-project" href="/how-it-works">
+    Learn how hooks, memory blocks, and the background agent work together.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Configuration" icon="sliders" href="/configuration/environment-variables">
+    Set environment variables to control modes, models, and agent identity.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="The Subconscious Agent" icon="brain" href="/agent/default-agent">
+    Explore the bundled agent's memory architecture and communication style.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What Subconscious does
 
-Everything you need to create world-class documentation.
+After each Claude Code response, the session transcript is sent to a Letta agent running in the background. The agent reads your files, updates its memory, and whispers guidance back before your next prompt — all without adding latency to your workflow.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={3}>
+  <Card title="Watches sessions" icon="eye">
+    Every transcript is sent to the agent after each response via the `Stop` hook.
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Reads your code" icon="magnifying-glass">
+    The agent uses `Read`, `Grep`, and `Glob` to explore your codebase while processing.
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Builds memory" icon="database">
+    Eight memory blocks accumulate preferences, project context, and patterns over time.
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Whispers back" icon="comment">
+    Messages are injected before each prompt so Claude sees your agent's guidance.
   </Card>
-</Columns>
+  <Card title="Never blocks" icon="bolt">
+    Async processing means the `Stop` hook exits immediately — no waiting.
+  </Card>
+  <Card title="Shares across projects" icon="share-nodes">
+    One agent brain serves all your repositories with per-project conversation threads.
+  </Card>
+</CardGroup>
 
-## Need inspiration?
+## Get started
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Steps>
+  <Step title="Get a Letta API key">
+    Sign up at [app.letta.com](https://app.letta.com) and copy your API key.
+  </Step>
+  <Step title="Install the plugin">
+    Run these two commands inside Claude Code:
+    ```
+    /plugin marketplace add letta-ai/claude-subconscious
+    /plugin install claude-subconscious@claude-subconscious
+    ```
+  </Step>
+  <Step title="Set your API key">
+    Export the key in your shell profile:
+    ```bash
+    export LETTA_API_KEY="your-api-key"
+    ```
+  </Step>
+  <Step title="Start coding">
+    Open any project in Claude Code. Subconscious activates automatically on the first session. After a few sessions it will have enough context to provide useful guidance.
+  </Step>
+</Steps>
+
+<Note>
+  The first few sessions are a ramp-up period. Subconscious starts with minimal context and gets smarter as it observes more sessions, reads your code, and learns your patterns.
+</Note>

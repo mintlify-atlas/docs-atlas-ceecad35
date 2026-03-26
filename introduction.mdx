@@ -1,0 +1,43 @@
+---
+title: "Introduction"
+description: "Claude Subconscious gives Claude Code a persistent memory and background agent powered by Letta."
+---
+
+Claude Code forgets everything between sessions. Claude Subconscious is a second agent running underneath — watching, learning, and whispering back.
+
+<Warning>
+  Claude Subconscious is an experimental way to extend Claude Code with Letta's memory system, tool access, and context engineering. If you're looking for a coding agent that's memory-first, model agnostic, and fully open source, consider using [Letta Code](https://github.com/letta-ai/letta-code) instead.
+</Warning>
+
+## What problem it solves
+
+Claude Code is stateless by design. Every new session starts from scratch — no memory of past decisions, patterns you've established, or context you've built up. If you've explained your architecture, your preferences, or what you're working on, you'll explain it again next session.
+
+Claude Subconscious runs a [Letta](https://letta.com) agent in the background that accumulates everything your sessions produce and surfaces it back before each prompt. The agent reads your codebase, builds up persistent memory over time, and whispers guidance into Claude's context window — without ever blocking you or requiring you to do anything differently.
+
+## Key capabilities
+
+- **Watches** every Claude Code session transcript
+- **Reads your codebase** — explores files with Read, Grep, and Glob while processing transcripts
+- **Remembers** across sessions, projects, and time using Letta's persistent memory blocks
+- **Whispers guidance** — surfaces context, patterns, and reminders before each prompt via `<letta_message>`
+- **Never blocks** — runs asynchronously in the background via the [Letta Code SDK](https://docs.letta.com/letta-code/sdk/)
+
+Not just a memory layer — a background agent with real tool access that gets smarter the more you use it.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the plugin and connect it to your Letta agent in minutes.
+  </Card>
+  <Card title="How it works" icon="gear" href="/how-it-works">
+    Understand the hook lifecycle, memory sync, and async processing.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/environment-variables">
+    Configure modes, models, and multi-project setups.
+  </Card>
+  <Card title="Default agent" icon="robot" href="/agent/default-agent">
+    Learn about the bundled Subconscious agent and its memory blocks.
+  </Card>
+</CardGroup>

@@ -1,0 +1,122 @@
+---
+title: "SDK tools"
+description: "Configure what tools the Subconscious agent can use to read files and search the web."
+---
+
+By default, the Subconscious agent gets **client-side tool access** via the [Letta Code SDK](https://docs.letta.com/letta-code/sdk/). Instead of being limited to memory operations, Sub can read your files, search the web, and explore your codebase while processing session transcripts.
+
+This is controlled by the `LETTA_SDK_TOOLS` environment variable.
+
+## Tool modes
+
+| Mode | Tools available | Use case |
+|------|----------------|----------|
+| `read-only` (default) | `Read`, `Grep`, `Glob`, `web_search`, `fetch_webpage` | Safe background research and file reading |
+| `full` | All tools (`Bash`, `Edit`, `Write`, `Task`, etc.) | Full autonomy — Sub can make changes and spawn sub-agents |
+| `off` | None (memory-only) | Listen-only — Sub processes transcripts but has no client-side tools |
+
+```bash
+export LETTA_SDK_TOOLS="read-only"  # Default
+export LETTA_SDK_TOOLS="full"
+export LETTA_SDK_TOOLS="off"
+```
+
+## How the SDK worker operates
+
+When a Claude Code session ends, the `Stop` hook spawns a background worker (`send_worker_sdk.ts`) that:
+
+<Steps>
+  <Step title="Opens an SDK session">
+    The worker calls `resumeSession()` from `@letta-ai/letta-code-sdk` using the existing Letta conversation ID, giving Sub access to the current session context.
+  </Step>
+  <Step title="Configures tool access">
+    Based on `LETTA_SDK_TOOLS`, the session is configured with the appropriate tool allowlist or blocklist before any messages are sent.
+  </Step>
+  <Step title="Sends the transcript">
+    The full session transcript — user messages, assistant responses, thinking blocks, and tool uses — is sent to the Letta agent.
+  </Step>
+  <Step title="Streams the response">
+    The worker streams the agent's full response. During this phase, Sub can call tools (reading files, searching the web) as part of processing the transcript.
+  </Step>
+  <Step title="Updates state">
+    On success, the worker updates the session state file and cleans up the temporary payload file.
+  </Step>
+</Steps>
+
+The entire worker runs **detached from Claude Code** — it never blocks your next prompt.
+
+## read-only mode (default)
+
+In `read-only` mode, Sub has access to:
+
+- `Read` — read file contents
+- `Grep` — search file contents with regex
+- `Glob` — find files by pattern
+- `web_search` — search the web
+- `fetch_webpage` — fetch and read a URL
+
+This is the default because it gives Sub meaningful context-gathering ability without any risk of modifying your codebase. Sub can explore the files you were working on, understand the broader architecture, and update its memory with accurate information.
+
+<Note>
+  Sub cannot call `AskUserQuestion`, `EnterPlanMode`, or `ExitPlanMode` in any mode — these require interactive input and are always blocked.
+</Note>
+
+## full mode
+
+In `full` mode, Sub has access to all available tools — including `Bash`, `Edit`, `Write`, `Task`, and everything else.
+
+Key capability in `full` mode: Sub can use the **`Task` tool** to spawn sub-agents for parallel research. For example, Sub could dispatch multiple agents to explore different parts of your codebase simultaneously, then synthesize the results into a memory update.
+
+<Warning>
+  `full` mode gives Sub the ability to modify your files and run shell commands. Use this only if you want Sub to be a fully autonomous background agent.
+</Warning>
+
+## off mode
+
+In `off` mode, Sub has no client-side tools. It still:
+
+- Receives the full session transcript
+- Can read and update its own memory blocks on the Letta server
+- Generates guidance for the next session based on what it observed in the transcript
+
+What it cannot do is read files, run searches, or browse the web. All of its analysis is based solely on what appeared in the transcript.
+
+Use `off` mode if you want Sub to listen and remember but never touch the filesystem.
+
+## Dependency
+
+The SDK worker requires the `@letta-ai/letta-code-sdk` package, which is included as a dependency and installed automatically with the plugin.
+
+```bash
+# Installed automatically — no manual step required
+npm install  # or pnpm install
+```
+
+If the SDK is not available, the worker logs an error and exits gracefully without affecting Claude Code.
+
+## Logs
+
+The SDK worker writes detailed logs including every tool call Sub makes:
+
+```bash
+tail -f /tmp/letta-claude-sync-$(id -u)/send_worker_sdk.log
+```
+
+This is the best place to see what Sub is reading and doing while processing your transcripts.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Default agent" href="/agent/default-agent">
+    What the Subconscious agent does and how it's configured.
+  </Card>
+  <Card title="Memory blocks" href="/agent/memory-blocks">
+    The memory blocks Sub updates based on what it reads.
+  </Card>
+  <Card title="Hooks: Stop" href="/hooks/stop">
+    How the Stop hook spawns the async SDK worker.
+  </Card>
+  <Card title="Debugging" href="/guides/debugging">
+    Reading logs to see what Sub is doing.
+  </Card>
+</CardGroup>

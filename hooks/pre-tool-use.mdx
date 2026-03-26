@@ -1,0 +1,129 @@
+---
+title: "PreToolUse hook"
+description: "Injects mid-workflow updates from Subconscious before each tool use."
+---
+
+The `PreToolUse` hook fires before every tool call during a Claude Code workflow. It performs a lightweight check for new messages or memory changes from the Subconscious agent since the last sync point — addressing "workflow drift" in long sessions where the agent may have updated its guidance after the initial prompt injection.
+
+## Configuration
+
+```json
+{
+  "type": "command",
+  "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/silent-npx.cjs\" tsx \"${CLAUDE_PLUGIN_ROOT}/scripts/pretool_sync.ts\"",
+  "timeout": 5
+}
+```
+
+| Property | Value |
+|----------|-------|
+| Script | `scripts/pretool_sync.ts` |
+| Timeout | 5 seconds |
+| Async | No |
+| Matcher | `*` (all tool uses) |
+
+## Why this matters
+
+A single Claude Code response can involve dozens of tool calls spanning minutes of real time. The `UserPromptSubmit` hook injects Sub's state at the start of that workflow, but Sub processes the previous transcript asynchronously in the background. By the time Claude is mid-workflow, Sub may have finished processing and updated its memory or sent a new message.
+
+`PreToolUse` catches these mid-workflow updates and delivers them via `additionalContext` without interrupting the current tool call.
+
+## What it does
+
+<Steps>
+  <Step title="Load session state">
+    Reads the per-session state file to get `lastBlockValues` and `lastSeenMessageId`. If neither exists (no prior `UserPromptSubmit` sync has run yet), the hook exits immediately — the first sync is `UserPromptSubmit`'s responsibility.
+  </Step>
+
+  <Step title="Fetch current agent state in parallel">
+    Makes two concurrent requests:
+    - `GET /agents/{agentId}?include=agent.blocks` — current memory block values
+    - `GET /conversations/{conversationId}/messages?limit=20` — most recent conversation messages
+  </Step>
+
+  <Step title="Check for changes">
+    Compares the fetched state against saved state:
+    - Are there any assistant messages with IDs newer than `lastSeenMessageId`?
+    - Has any memory block value changed since `lastBlockValues`?
+
+    If nothing has changed, the hook exits silently with no output — zero overhead on the tool call.
+  </Step>
+
+  <Step title="Inject via additionalContext">
+    If updates are found, they are formatted and returned as a JSON payload with `hookSpecificOutput.additionalContext`. Claude Code injects this into the tool call context.
+
+    The state file is updated so the same updates are not re-injected on the next tool call.
+  </Step>
+</Steps>
+
+## Output format
+
+When updates exist the hook returns a JSON payload (not stdout):
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "additionalContext": "<letta_update>\n...\n</letta_update>"
+  }
+}
+```
+
+The `additionalContext` value contains a `<letta_update>` wrapper around the same XML formats used by `UserPromptSubmit`:
+
+**New message from Sub:**
+
+```xml
+<letta_update>
+<letta_message from="Subconscious" timestamp="2026-01-26T20:37:14+00:00">
+The file you're about to edit has a known issue with async error propagation.
+See the note in project_context.
+</letta_message>
+</letta_update>
+```
+
+**Changed memory block:**
+
+```xml
+<letta_update>
+<letta_memory_update>
+<pending_items status="modified">
+- Investigate auth timeout
++ Investigate auth timeout — traced to token refresh race condition
+</pending_items>
+</letta_memory_update>
+</letta_update>
+```
+
+## Acknowledgment instruction
+
+When Sub has sent a new message, the hook appends an instruction asking Claude to surface it:
+
+```xml
+<instruction>Your Subconscious (Subconscious) just sent a message mid-workflow. Briefly acknowledge what Subconscious said in your next response - just a short note like "Sub notes: [key point]" so the user knows.</instruction>
+```
+
+## Silent no-op behavior
+
+When there is nothing to report the hook produces no output and exits with code `0`. Claude Code receives no `additionalContext` and the tool call proceeds normally. This is the common case — the hook is intentionally designed to be invisible unless it has something useful to say.
+
+<Info>
+  Errors in `pretool_sync.ts` are also silent: the hook exits `0` on any exception so a transient API failure never blocks a tool call.
+</Info>
+
+## Debug logging
+
+`pretool_sync.ts` does not write to a dedicated log file. Enable debug logging to see what the hook checks and whether it found updates — debug output is written to stderr:
+
+```bash
+export LETTA_DEBUG=1
+```
+
+With `LETTA_DEBUG=1` set, you'll see lines like `[pretool debug] New messages: 0, Changed blocks: 0` in the terminal when the hook runs.
+
+## Related pages
+
+- [UserPromptSubmit hook](/hooks/user-prompt-submit) — the primary injection point at prompt start
+- [Stop hook](/hooks/stop) — sends transcripts that trigger Sub's async processing
+- [Configuration: modes](/configuration/modes) — `off` disables this hook
+- [Guides: debugging](/guides/debugging) — reading log files

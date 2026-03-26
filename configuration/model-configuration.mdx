@@ -1,0 +1,98 @@
+---
+title: "Model configuration"
+description: "How Claude Subconscious selects and configures the LLM model for your agent."
+---
+
+Claude Subconscious automatically detects and configures the best available model on your Letta server. You can override this with the `LETTA_MODEL` environment variable.
+
+## Auto-detection
+
+Every time a new session starts, the plugin verifies that the agent's current model is available and reconfigures if necessary.
+
+<Steps>
+  <Step title="Query available models">
+    The plugin calls `GET /v1/models/` on your Letta server to retrieve the list of available model handles.
+  </Step>
+  <Step title="Check the agent's current model">
+    The plugin fetches the agent's `llm_config` and extracts the current model handle (in `provider/model` format).
+  </Step>
+  <Step title="Verify availability">
+    If the current model is present in the available models list, no change is made.
+  </Step>
+  <Step title="Auto-select a fallback">
+    If the current model is not available, the plugin selects the best available model from the preference list and updates the agent via `PATCH /v1/agents/{id}`.
+  </Step>
+</Steps>
+
+## Auto-selection priority
+
+When a fallback model must be selected, the plugin tries models in this exact order:
+
+| Priority | Model handle | Notes |
+|----------|-------------|-------|
+| 1 | `anthropic/claude-sonnet-4-5` | Recommended — best for agents per Anthropic |
+| 2 | `openai/gpt-4.1-mini` | Good balance, 1M context, low cost |
+| 3 | `anthropic/claude-haiku-4-5` | Fast Claude option |
+| 4 | `openai/gpt-5.2` | Flagship fallback |
+| 5 | `google_ai/gemini-3-flash` | Google's balanced option |
+| 6 | `google_ai/gemini-2.5-flash` | Google fallback |
+| 7 | First available | Whatever the server has |
+
+The default bundled agent uses `zai/glm-5` (free on Letta Cloud). If that model is not available on your server, the plugin automatically upgrades to the best available model from the list above.
+
+## Manual override
+
+To pin a specific model, set `LETTA_MODEL`:
+
+```bash
+export LETTA_MODEL="anthropic/claude-sonnet-4-5"
+```
+
+When `LETTA_MODEL` is set:
+
+- If the model **is** available on the server, the agent is updated to use it (if it isn't already)
+- If the model **is not** available, the plugin logs a warning and falls back to auto-selection
+
+<Warning>
+  If `LETTA_MODEL` is set to a model your server doesn't have, the plugin will warn you but continue with auto-selection rather than failing.
+</Warning>
+
+## Model handle format
+
+Model handles use the `provider/model` format:
+
+```
+gpt-4.1-mini          ← incorrect (missing provider prefix)
+anthropic.claude      ← incorrect (wrong separator)
+openai/gpt-4.1-mini   ← correct
+```
+
+Supported providers and example models:
+
+| Provider prefix | Example models |
+|----------------|----------------|
+| `openai` | `gpt-5.2`, `gpt-5-nano`, `gpt-4.1-mini` |
+| `anthropic` | `claude-sonnet-4-5`, `claude-opus-4-5`, `claude-haiku-4-5` |
+| `google_ai` | `gemini-3-flash`, `gemini-2.5-flash`, `gemini-2.5-pro` |
+| `zai` | `glm-5` (Letta Cloud default, free) |
+
+<Note>
+  Your Letta server must have the appropriate API key configured for your chosen provider (e.g., `OPENAI_API_KEY` for OpenAI models, `ANTHROPIC_API_KEY` for Anthropic models).
+</Note>
+
+## Context window override
+
+Use `LETTA_CONTEXT_WINDOW` to set the agent's context window size in tokens:
+
+```bash
+export LETTA_MODEL="anthropic/claude-sonnet-4-5"
+export LETTA_CONTEXT_WINDOW="1048576"   # 1M tokens
+```
+
+This is useful when a model supports a larger context window than the server's default configuration. The value must be a positive integer; non-numeric values are silently ignored.
+
+The `LETTA_CONTEXT_WINDOW` setting is applied via the `llm_config` patch, which preserves all other settings (temperature, reasoning tokens, etc.) while updating only the context window.
+
+## Changing the model via the ADE
+
+You can also change the model at any time through the [Agent Development Environment](https://app.letta.com) on Letta Cloud. Changes made in the ADE are respected on the next session start — the auto-detection step will see the new model and verify it's available.

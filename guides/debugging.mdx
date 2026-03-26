@@ -1,0 +1,167 @@
+---
+title: "Debugging"
+description: "Diagnose and fix issues with Claude Subconscious using log files and common troubleshooting steps."
+---
+
+## Log files
+
+Each hook writes to its own log file in a user-specific temp directory:
+
+```
+$TMPDIR/letta-claude-sync-$UID/
+```
+
+On most systems `$TMPDIR` is `/tmp`, so the path becomes `/tmp/letta-claude-sync-<your-uid>/`.
+
+| Log file | Hook | What it captures |
+|---|---|---|
+| `session_start.log` | SessionStart | Session initialization, agent resolution, conversation creation |
+| `sync_letta_memory.log` | UserPromptSubmit | Memory sync operations, block fetching, stdout injection |
+| `send_messages.log` | Stop (main) | Transcript parsing, payload writing, worker spawn |
+| `send_worker_sdk.log` | Stop (worker) | SDK background worker, agent processing, state updates |
+
+### Watching logs
+
+```bash
+# Watch all logs (macOS/Linux)
+tail -f /tmp/letta-claude-sync-$(id -u)/*.log
+
+# Or specific logs
+tail -f /tmp/letta-claude-sync-$(id -u)/send_messages.log
+tail -f /tmp/letta-claude-sync-$(id -u)/send_worker_sdk.log
+```
+
+### Enabling debug mode
+
+Set `LETTA_DEBUG=1` for more verbose output in the logs:
+
+```bash
+export LETTA_DEBUG=1
+```
+
+### Verifying the plugin is active
+
+After opening Claude Code, check `session_start.log` to confirm the SessionStart hook fired. A successful session start will show the agent ID, conversation ID, and a `Completed successfully` line at the end.
+
+---
+
+## Common issues
+
+<AccordionGroup>
+
+<Accordion title="LETTA_API_KEY not set">
+
+The plugin requires an API key to authenticate with Letta.
+
+```bash
+export LETTA_API_KEY="your-api-key"
+```
+
+Get your API key from [app.letta.com](https://app.letta.com). Add the export to your shell profile (`~/.bashrc` or `~/.zshrc`) to make it permanent.
+
+</Accordion>
+
+<Accordion title="Invalid LETTA_AGENT_ID format">
+
+If you set `LETTA_AGENT_ID`, it must be a UUID with the `agent-` prefix — not the agent's friendly name:
+
+```
+# Correct
+export LETTA_AGENT_ID="agent-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+# Incorrect — friendly name will be rejected
+export LETTA_AGENT_ID="Memo"
+```
+
+To find the UUID:
+1. Go to [app.letta.com](https://app.letta.com)
+2. Select your agent
+3. Copy the ID from the URL or agent settings
+
+If `LETTA_AGENT_ID` is not set, the plugin auto-imports the bundled default agent and saves the ID to `~/.letta/claude-subconscious/config.json`.
+
+</Accordion>
+
+<Accordion title="Plugin install fails: EXDEV cross-device link not permitted (Linux)">
+
+On Linux systems where `/tmp` is a `tmpfs` mount on a separate filesystem (common on Ubuntu, Fedora, Arch), Claude Code cannot move files across filesystem boundaries during plugin installation.
+
+Workaround — redirect `TMPDIR` to a path on the same filesystem:
+
+```bash
+mkdir -p ~/.claude/tmp
+export TMPDIR="$HOME/.claude/tmp"
+```
+
+Add both lines to your `~/.bashrc` or `~/.zshrc` to make the change permanent, then restart your shell and reinstall the plugin.
+
+This is a [known Claude Code bug](https://github.com/anthropics/claude-code/issues/14799).
+
+</Accordion>
+
+<Accordion title="npx spawn ENOENT (Windows)">
+
+The plugin includes Windows compatibility via `silent-npx.cjs` and `silent-launcher.exe`. These handle the Windows requirement for `npx.cmd` instead of `npx`, and prevent console window flashes when spawning background workers.
+
+If you see `spawn ENOENT`, verify that Node.js and `npx` are on your `PATH` and that the plugin was installed correctly. Check `session_start.log` for details on which executable was attempted.
+
+</Accordion>
+
+<Accordion title="Agent model not available">
+
+When the agent's configured model is not available on your Letta server, the plugin auto-selects a fallback model. Check `session_start.log` for a line like:
+
+```
+Auto-selecting model: anthropic/claude-sonnet-4-5
+```
+
+The auto-selection priority is:
+1. `anthropic/claude-sonnet-4-5`
+2. `openai/gpt-4.1-mini`
+3. `anthropic/claude-haiku-4-5`
+4. `openai/gpt-5.2`
+5. `google_ai/gemini-3-flash`
+6. `google_ai/gemini-2.5-flash`
+7. First available model on the server
+
+To pin a specific model, set `LETTA_MODEL`:
+
+```bash
+export LETTA_MODEL="anthropic/claude-sonnet-4-5"
+```
+
+See [Model configuration](/configuration/model-configuration) for details.
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## API notes
+
+<Note>
+  Memory sync requests use the `?include=agent.blocks` query parameter. The Letta API does not include relationship fields like memory blocks by default — omitting this parameter results in an empty blocks array.
+</Note>
+
+- All transcript delivery uses the [Letta Code SDK](https://docs.letta.com/letta-code/sdk/) — no raw API calls are made for message sending.
+- The SDK background worker streams the agent's full response before updating local state.
+
+---
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" href="/configuration/environment-variables">
+    Full reference for all configuration options
+  </Card>
+  <Card title="Hooks overview" href="/hooks/overview">
+    How each hook works and what it logs
+  </Card>
+  <Card title="State management" href="/guides/state-management">
+    Where state files are stored
+  </Card>
+  <Card title="Self-hosted Letta" href="/guides/self-hosted">
+    Connecting to a local Letta server
+  </Card>
+</CardGroup>

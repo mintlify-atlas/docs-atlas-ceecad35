@@ -1,0 +1,117 @@
+---
+title: "Default agent"
+description: "The bundled Subconscious agent that watches your sessions and builds persistent memory."
+---
+
+When no `LETTA_AGENT_ID` is set, Claude Subconscious automatically imports a bundled agent called **Subconscious** on first use. This agent is purpose-built for background observation — it watches your Claude Code sessions, reads your codebase, and whispers guidance back before each prompt.
+
+## What it does
+
+The default Subconscious agent runs entirely in the background:
+
+- **Reads your code** — uses `Read`, `Grep`, and `Glob` to explore your codebase while processing session transcripts
+- **Learns your preferences** — picks up on corrections, explicit statements, and recurring patterns
+- **Tracks project context** — architecture decisions, known gotchas, and pending items
+- **Provides guidance** — surfaces context and reminders via `<letta_message>` before each prompt
+- **Searches the web** — looks things up to augment its understanding when needed
+
+## Communication style
+
+The default agent is configured to be:
+
+- **Observational** — "I noticed..." not "You should..."
+- **Concise** — Technical, no filler
+- **Present but not intrusive** — Empty guidance is fine; it won't manufacture content
+
+## Two-way communication
+
+Claude Code can address Subconscious directly in responses. The agent sees everything in the transcript and may respond on the next sync. It's designed for ongoing dialogue, not just one-way observation.
+
+```xml
+<!-- Claude Code can write something like this in a response -->
+Hey Sub, we're refactoring the auth module — update your project context accordingly.
+```
+
+On the next sync, Subconscious sees the full transcript (including that note) and can update its memory blocks accordingly.
+
+## Zero-config setup
+
+The only required configuration is your API key:
+
+```bash
+export LETTA_API_KEY="your-api-key"
+```
+
+Get your API key from [app.letta.com](https://app.letta.com). Everything else is handled automatically.
+
+## Agent resolution order
+
+The plugin resolves which agent to use in this order:
+
+<Steps>
+  <Step title="Environment variable">
+    If `LETTA_AGENT_ID` is set, that agent is used. The value must be a valid UUID with the `agent-` prefix.
+  </Step>
+  <Step title="Saved config">
+    If `~/.letta/claude-subconscious/config.json` exists with a saved agent ID, that agent is reused.
+  </Step>
+  <Step title="Auto-import">
+    If neither of the above exists, the bundled `Subconscious.af` agent file is imported automatically and its ID is saved to the config for future use.
+  </Step>
+</Steps>
+
+## Auto-import process
+
+When the plugin imports the bundled agent for the first time:
+
+<Steps>
+  <Step title="Import the agent file">
+    The bundled `Subconscious.af` file is uploaded to your Letta server via the import API.
+  </Step>
+  <Step title="Rename the agent">
+    The Letta import API appends a `_copy` suffix to the agent name. The plugin renames it back to the original name automatically.
+  </Step>
+  <Step title="Apply required tags">
+    Two tags are added to the agent to enable required features:
+    - `git-memory-enabled` — triggers the git-backed memory filesystem
+    - `origin:claude-subconcious` — identifies the agent's origin for tracking
+  </Step>
+  <Step title="Save the agent ID">
+    The new agent ID is saved to `~/.letta/claude-subconscious/config.json` so the same agent is reused on every subsequent session.
+  </Step>
+</Steps>
+
+<Note>
+  The auto-import only happens once. After the first run, the saved config is used directly.
+</Note>
+
+## Supervising the agent
+
+You can watch the Subconscious agent in real time — see what it's reading, what memory updates it's making, and what guidance it's preparing — at [app.letta.com](https://app.letta.com).
+
+At the start of each session, the supervision URL is printed to your terminal (bypasses Claude's context capture). In `full` mode, it is also injected into Claude's context:
+
+```xml
+<letta_context>
+Subconscious agent "herald" is watching this session and whispering guidance.
+It can read files, search your codebase, and browse the web (read-only).
+Supervise: https://app.letta.com/agents/agent-xxx?conversation=conv-xxx
+</letta_context>
+```
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Memory blocks" href="/agent/memory-blocks">
+    The eight memory blocks the Subconscious agent maintains.
+  </Card>
+  <Card title="SDK tools" href="/agent/sdk-tools">
+    Configure what tools the agent can use to read files and search the web.
+  </Card>
+  <Card title="Custom agents" href="/agent/custom-agents">
+    Use your own Letta agent instead of the bundled one.
+  </Card>
+  <Card title="Environment variables" href="/configuration/environment-variables">
+    All configuration options including LETTA_AGENT_ID and LETTA_MODE.
+  </Card>
+</CardGroup>

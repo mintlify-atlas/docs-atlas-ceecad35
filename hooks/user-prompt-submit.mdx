@@ -1,0 +1,138 @@
+---
+title: "UserPromptSubmit hook"
+description: "Injects Subconscious memory and messages before each Claude Code prompt."
+---
+
+The `UserPromptSubmit` hook fires before every user prompt is processed by Claude Code. It fetches the Subconscious agent's current state and injects it into Claude's context via stdout, so Claude sees Sub's guidance as part of the prompt.
+
+## Configuration
+
+```json
+{
+  "type": "command",
+  "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/silent-npx.cjs\" tsx \"${CLAUDE_PLUGIN_ROOT}/scripts/sync_letta_memory.ts\"",
+  "timeout": 10
+}
+```
+
+| Property | Value |
+|----------|-------|
+| Script | `scripts/sync_letta_memory.ts` |
+| Timeout | 10 seconds |
+| Async | No |
+| Matcher | `*` (all sessions) |
+
+<Note>
+  This same script also runs on `SessionStart` (after `session_start.ts`), so Sub's initial state is injected before the user's very first prompt in a session.
+</Note>
+
+## What it does
+
+<Steps>
+  <Step title="Load session state">
+    Reads the per-session state file written by the `SessionStart` hook to get the Letta conversation ID, the last block values snapshot, and the ID of the last message already shown to Claude.
+  </Step>
+
+  <Step title="Fetch agent state in parallel">
+    Makes two concurrent requests to the Letta API:
+    - `GET /agents/{agentId}?include=agent.blocks` — fetches current memory blocks
+    - `GET /conversations/{conversationId}/messages?limit=300` — fetches conversation messages to find new assistant messages from Sub
+  </Step>
+
+  <Step title="Determine what to inject">
+    Compares fetched state against saved state to find:
+    - **New messages** — assistant messages newer than `lastSeenMessageId`
+    - **Changed blocks** — memory blocks whose value differs from `lastBlockValues`
+
+    What gets written to stdout depends on the current [mode](/configuration/modes).
+  </Step>
+
+  <Step title="Write output to stdout">
+    Stdout is captured by Claude Code and prepended to the user prompt context. The hook then saves updated state (new `lastSeenMessageId` and `lastBlockValues` snapshot) back to the session state file.
+  </Step>
+</Steps>
+
+## Output by mode
+
+### `whisper` mode (default)
+
+Only new messages from Sub are injected. If Sub has nothing new to say, a comment is written:
+
+```xml
+<!-- No new messages from Subconscious -->
+```
+
+If Sub sent a message:
+
+```xml
+<letta_message from="Subconscious" timestamp="2026-01-26T20:37:14+00:00">
+You've asked about error handling in async contexts three times this week.
+Consider reviewing error handling architecture holistically.
+</letta_message>
+```
+
+### `full` mode — first prompt of a session
+
+On the very first prompt (no `lastBlockValues` snapshot yet), all memory blocks are injected along with the agent context header:
+
+```xml
+<letta_context>
+Subconscious agent "herald" is watching this session and whispering guidance.
+It can read files, search your codebase, and browse the web (read-only).
+Supervise: https://app.letta.com/agents/agent-xxx?conversation=conv-xxx
+</letta_context>
+
+<letta_memory_blocks>
+<user_preferences description="Learned coding style and preferences.">
+Prefers explicit type annotations. Uses pnpm, not npm.
+</user_preferences>
+<project_context description="Codebase knowledge and architecture.">
+Working on claude-subconscious plugin. TypeScript, ESM modules.
+</project_context>
+</letta_memory_blocks>
+```
+
+### `full` mode — subsequent prompts
+
+On later prompts, only blocks that changed since the previous sync are shown as a diff:
+
+```xml
+<letta_memory_update>
+<!-- Memory blocks updated since last prompt (showing diff) -->
+<pending_items status="modified">
+- Phase 1 test harness complete
++ Release prep complete: README fixed, .gitignore updated
+</pending_items>
+</letta_memory_update>
+```
+
+Diff lines prefixed with `-` were removed; lines prefixed with `+` were added. Blocks that did not change are omitted entirely.
+
+## Message acknowledgment instruction
+
+When Sub has sent new messages, an instruction is appended to the output so Claude briefly surfaces the guidance to the user:
+
+```xml
+<instruction>Your Subconscious (Subconscious) sent you a message above. Briefly acknowledge what Subconscious said - just a short note like "Sub notes: [key point]" so the user knows.</instruction>
+```
+
+## Log file
+
+Debug output is written to `$TMPDIR/letta-claude-sync-$UID/sync_letta_memory.log`.
+
+```bash
+tail -f /tmp/letta-claude-sync-$(id -u)/sync_letta_memory.log
+```
+
+Enable verbose debug logging with:
+
+```bash
+export LETTA_DEBUG=1
+```
+
+## Related pages
+
+- [SessionStart hook](/hooks/session-start) — sets up the conversation thread used here
+- [PreToolUse hook](/hooks/pre-tool-use) — mid-workflow variant of this same check
+- [Configuration: modes](/configuration/modes) — `whisper` vs `full` mode
+- [Agent: memory blocks](/agent/memory-blocks) — the blocks injected in `full` mode

@@ -1,0 +1,105 @@
+---
+title: "SessionStart hook"
+description: "Notifies the Letta agent when a new Claude Code session begins."
+---
+
+The `SessionStart` hook fires once at the start of each Claude Code session, before any user prompt is processed. It sets up the conversation thread that all other hooks reference and sends the agent its first notification for the session.
+
+## Configuration
+
+```json
+{
+  "type": "command",
+  "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/silent-npx.cjs\" tsx \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.ts\"",
+  "timeout": 5
+}
+```
+
+| Property | Value |
+|----------|-------|
+| Script | `scripts/session_start.ts` |
+| Timeout | 5 seconds |
+| Async | No |
+| Matcher | `*` (all sessions) |
+
+## What it does
+
+<Steps>
+  <Step title="Resolve agent identity">
+    Looks up the Letta agent ID using the following priority order:
+    1. `LETTA_AGENT_ID` environment variable
+    2. Saved config at `~/.letta/claude-subconscious/config.json`
+    3. Auto-imports the bundled `Subconscious.af` agent and saves the ID for future sessions
+  </Step>
+
+  <Step title="Create or reuse a conversation thread">
+    Checks `.letta/claude/conversations.json` to see if this Claude Code session ID already has a mapped Letta conversation. If not, a new conversation is created via the Letta API. If the agent ID has changed since the last mapping, the stale entry is discarded and a fresh conversation is created.
+  </Step>
+
+  <Step title="Save session state">
+    Writes a per-session state file to `.letta/claude/session-{id}.json` containing the conversation ID and a `lastProcessedIndex` of `-1`. This file is the shared state read by the `UserPromptSubmit`, `PreToolUse`, and `Stop` hooks.
+  </Step>
+
+  <Step title="Clean up legacy CLAUDE.md content">
+    Scans both the project `.claude/CLAUDE.md` and the global `~/.claude/CLAUDE.md` for any `<letta>` sections written by earlier versions of the plugin, and removes them. In current versions nothing is ever written to CLAUDE.md — all content is injected via stdout.
+  </Step>
+
+  <Step title="Send session start notification">
+    Posts a structured message to the Letta conversation so the agent knows a new session has begun. The message includes the project name, path, session ID, timestamp, and the current SDK tools mode.
+  </Step>
+</Steps>
+
+## Session start message format
+
+The message sent to the Letta agent is a structured XML envelope that carries the project name, path, session ID, timestamp, current SDK tools mode, and a context note about which tools Sub can use:
+
+```xml
+<claude_code_session_start>
+  <project>my-project</project>
+  <path>/Users/you/code/my-project</path>
+  <session_id>abc123</session_id>
+  <timestamp>2026-01-14T12:00:00Z</timestamp>
+  <sdk_tools_mode>read-only</sdk_tools_mode>
+
+  <context>
+    A new Claude Code session has begun. I'll be sending you updates as the session progresses.
+
+    Tool access: Read-only tool access — you can Read, Grep, Glob files and search the web. No writes.
+    Use your tools to explore the codebase at /Users/you/code/my-project when processing transcripts.
+  </context>
+</claude_code_session_start>
+```
+
+## State saved for other hooks
+
+After the hook completes, downstream hooks can read the session state file:
+
+```json
+{
+  "sessionId": "abc123",
+  "conversationId": "conv-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "lastProcessedIndex": -1,
+  "startedAt": "2026-01-14T12:00:00.000Z"
+}
+```
+
+This file is stored at `.letta/claude/session-{sessionId}.json` (or under `$LETTA_HOME/.letta/claude/` if `LETTA_HOME` is set).
+
+<Tip>
+  The hook also runs `sync_letta_memory.ts` immediately after `session_start.ts` on `SessionStart` — so the first memory injection happens before the user's very first prompt. See [UserPromptSubmit](/hooks/user-prompt-submit) for details.
+</Tip>
+
+## Log file
+
+Debug output is written to `$TMPDIR/letta-claude-sync-$UID/session_start.log`.
+
+```bash
+tail -f /tmp/letta-claude-sync-$(id -u)/session_start.log
+```
+
+## Related pages
+
+- [UserPromptSubmit hook](/hooks/user-prompt-submit) — injects memory before each prompt
+- [Stop hook](/hooks/stop) — sends transcript after each response
+- [Configuration: environment variables](/configuration/environment-variables) — `LETTA_API_KEY`, `LETTA_AGENT_ID`, `LETTA_HOME`
+- [Guides: state management](/guides/state-management) — how session and conversation state is stored

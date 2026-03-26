@@ -1,0 +1,65 @@
+---
+title: "Hooks overview"
+description: "The four Claude Code hooks that power Claude Subconscious."
+---
+
+Claude Subconscious registers four Claude Code hooks that form a complete lifecycle: from session initialization, through each prompt and tool use, to async transcript delivery after every response.
+
+## Hook comparison
+
+| Hook | Script(s) | Timeout | Async | Purpose |
+|------|-----------|---------|-------|---------|
+| `SessionStart` | `session_start.ts` (5s) + `sync_letta_memory.ts` (10s) | 5s + 10s | No | Notify agent, prime context |
+| `UserPromptSubmit` | `sync_letta_memory.ts` | 10s | No | Inject memory + messages |
+| `PreToolUse` | `pretool_sync.ts` | 5s | No | Mid-workflow updates |
+| `Stop` | `send_messages_to_letta.ts` | 120s | Yes | Send transcript async |
+
+## Lifecycle flow
+
+Every Claude Code session moves through the following sequence:
+
+<Steps>
+  <Step title="Session begins — SessionStart">
+    The `SessionStart` hook fires once when Claude Code opens a session. It creates (or reuses) a Letta conversation thread, sends a session start notification to the Subconscious agent, and removes any legacy `<letta>` content left in CLAUDE.md from older versions.
+  </Step>
+
+  <Step title="Before each prompt — UserPromptSubmit">
+    Before every user prompt is processed, `UserPromptSubmit` fetches the agent's current state and injects it into Claude's context via stdout. In `whisper` mode only new messages from Sub are injected. In `full` mode, the first prompt receives all memory blocks and subsequent prompts receive diffs of what changed.
+  </Step>
+
+  <Step title="Before each tool use — PreToolUse">
+    During a workflow, `PreToolUse` fires before every tool call. It performs a lightweight check for new messages or memory changes since the last sync. If updates are found they are delivered via `additionalContext` — keeping Claude informed mid-workflow without waiting for the next prompt. If nothing has changed the hook exits silently.
+  </Step>
+
+  <Step title="After each response — Stop">
+    When Claude Code finishes a response, the `Stop` hook fires. It parses the session transcript, builds a structured payload, writes it to a temp file, and spawns a detached background worker — then exits immediately. The worker opens a Letta Code SDK session, gives Sub client-side tool access, sends the transcript, and cleans up. Claude Code is never blocked.
+  </Step>
+</Steps>
+
+<Note>
+  All content is injected via stdout or `additionalContext`. Nothing is written to CLAUDE.md in any mode.
+</Note>
+
+## Individual hook pages
+
+<CardGroup cols={2}>
+  <Card title="SessionStart" href="/hooks/session-start">
+    Notifies the Letta agent when a new Claude Code session begins and cleans up legacy CLAUDE.md content.
+  </Card>
+  <Card title="UserPromptSubmit" href="/hooks/user-prompt-submit">
+    Injects Subconscious memory and messages before each Claude Code prompt.
+  </Card>
+  <Card title="PreToolUse" href="/hooks/pre-tool-use">
+    Delivers mid-workflow updates from Subconscious before each tool use.
+  </Card>
+  <Card title="Stop" href="/hooks/stop">
+    Asynchronously sends the session transcript to the Letta agent after each response.
+  </Card>
+</CardGroup>
+
+## Related pages
+
+- [How it works](/how-it-works) — end-to-end architecture
+- [Configuration: modes](/configuration/modes) — `whisper`, `full`, and `off`
+- [Agent: SDK tools](/agent/sdk-tools) — what tools Sub gets during transcript processing
+- [Guides: debugging](/guides/debugging) — reading hook log files

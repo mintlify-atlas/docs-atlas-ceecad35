@@ -1,0 +1,134 @@
+---
+title: "Self-hosted Letta"
+description: "Connect Claude Subconscious to a self-hosted Letta server instead of Letta Cloud."
+---
+
+By default the plugin connects to [Letta Cloud](https://app.letta.com) at `https://api.letta.com`. You can point it at your own Letta server instead.
+
+## Setting the base URL
+
+<Steps>
+
+<Step title="Start your Letta server">
+
+Follow the [Letta documentation](https://docs.letta.com) to run a local or self-hosted Letta server. The default port is `8283`.
+
+```bash
+# Example: Letta running locally
+letta server
+```
+
+</Step>
+
+<Step title="Set LETTA_BASE_URL">
+
+Point the plugin at your server by setting `LETTA_BASE_URL`:
+
+```bash
+export LETTA_BASE_URL="http://localhost:8283"
+```
+
+Add this to your `~/.bashrc` or `~/.zshrc` to make it permanent.
+
+</Step>
+
+<Step title="Set your API key">
+
+Self-hosted Letta servers still require an API key for authentication:
+
+```bash
+export LETTA_API_KEY="your-api-key"
+```
+
+</Step>
+
+<Step title="Configure model provider API keys on the server">
+
+Your self-hosted Letta server needs API keys for whichever LLM providers you want to use. For example, to use OpenAI models, set `OPENAI_API_KEY` in the server's environment:
+
+```bash
+# On the machine running the Letta server
+export OPENAI_API_KEY="sk-..."
+```
+
+Refer to the [Letta documentation](https://docs.letta.com) for how to configure provider credentials on your server.
+
+</Step>
+
+</Steps>
+
+## How URL construction works
+
+The plugin builds all API URLs using `letta_api_url.ts`. Given a base URL, it:
+
+1. Strips any trailing slashes
+2. Appends `/v1` if the base URL does not already end with `/v1`
+3. Appends the specific endpoint path
+
+For example, with `LETTA_BASE_URL="http://localhost:8283"`, a request to `/agents/{id}` becomes:
+
+```
+http://localhost:8283/v1/agents/{id}
+```
+
+If `LETTA_BASE_URL` is not set, the base defaults to `https://api.letta.com`.
+
+## Model availability on self-hosted servers
+
+<Warning>
+  The default bundled agent uses `zai/glm-5`, which is free on Letta Cloud but is not available on self-hosted servers. The plugin detects this automatically.
+</Warning>
+
+When you switch to a self-hosted server, the plugin:
+
+1. Queries your server's models endpoint (`GET /v1/models/`) to list available models
+2. Checks whether the agent's current model is on that list
+3. Auto-selects a fallback if the model is not available
+
+The fallback selection priority is:
+
+| Priority | Model |
+|---|---|
+| 1 | `anthropic/claude-sonnet-4-5` |
+| 2 | `openai/gpt-4.1-mini` |
+| 3 | `anthropic/claude-haiku-4-5` |
+| 4 | `openai/gpt-5.2` |
+| 5 | `google_ai/gemini-3-flash` |
+| 6 | `google_ai/gemini-2.5-flash` |
+| 7 | First available model on the server |
+
+You can skip auto-selection by setting `LETTA_MODEL` explicitly:
+
+```bash
+export LETTA_MODEL="openai/gpt-4.1-mini"
+```
+
+If `LETTA_MODEL` is set but not available on the server, the plugin warns and falls back to auto-selection. Check `session_start.log` to see which model was ultimately configured.
+
+## Switching between cloud and self-hosted
+
+The agent's model is updated automatically when you switch servers. When `LETTA_BASE_URL` is unset, the plugin reconnects to Letta Cloud and re-checks model availability.
+
+<Tip>
+  Use `direnv` to set `LETTA_BASE_URL` per-project so different projects can target different servers without changing your global shell environment.
+</Tip>
+
+## Supervision link
+
+When `LETTA_BASE_URL` is set, the plugin does not display a `app.letta.com` supervision link at session start — it shows the agent ID and conversation ID directly instead, since the cloud UI cannot connect to your private server.
+
+---
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" href="/configuration/environment-variables">
+    Full reference for LETTA_BASE_URL and related settings
+  </Card>
+  <Card title="Model configuration" href="/configuration/model-configuration">
+    Model selection, overrides, and context window settings
+  </Card>
+  <Card title="Debugging" href="/guides/debugging">
+    Log files and troubleshooting
+  </Card>
+</CardGroup>

@@ -1,0 +1,140 @@
+---
+title: "State management"
+description: "Understand how Claude Subconscious stores session state, conversation mappings, and configuration."
+---
+
+The plugin manages three categories of state: durable project state, global config, and temporary files.
+
+## Durable state
+
+Persisted in your project directory under `.letta/claude/`. This is conversation bookkeeping — it maps Claude Code sessions to Letta conversations and tracks sync progress. It is not a separate agent; all projects share the same agent brain.
+
+**Location:** `<project-root>/.letta/claude/`
+
+| File | Purpose |
+|---|---|
+| `conversations.json` | Maps Claude Code session IDs to Letta conversation IDs |
+| `session-{id}.json` | Per-session state: last processed transcript index, cached conversation ID, last memory block values, last seen message ID |
+
+Example `session-{id}.json`:
+
+```json
+{
+  "sessionId": "abc123",
+  "conversationId": "conv-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "lastProcessedIndex": 42,
+  "lastBlockValues": {
+    "guidance": "...",
+    "pending_items": "..."
+  },
+  "lastSeenMessageId": "msg-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+}
+```
+
+<Note>
+  If `LETTA_HOME` is set (e.g. `export LETTA_HOME=$HOME`), durable state moves to `~/.letta/claude/` instead of the per-project directory. This consolidates state from all projects in one location.
+</Note>
+
+## Global config
+
+Stored once in your home directory. Contains the agent ID and the model that was configured.
+
+**Location:** `~/.letta/claude-subconscious/config.json`
+
+```json
+{
+  "agentId": "agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "importedAt": "2026-01-14T12:00:00Z",
+  "model": "anthropic/claude-sonnet-4-5"
+}
+```
+
+This file is created automatically on first use. The agent resolution order is:
+
+1. `LETTA_AGENT_ID` environment variable (if set)
+2. `agentId` in `~/.letta/claude-subconscious/config.json` (if exists)
+3. Auto-import of the bundled `Subconscious.af` agent (saves result to config)
+
+## Temporary state
+
+Log files and transcript payloads written to a user-specific temp directory. These are not persisted across reboots and are cleaned up automatically after processing.
+
+**Location:** `$TMPDIR/letta-claude-sync-$UID/`
+
+| File | Contents |
+|---|---|
+| `session_start.log` | Session initialization output |
+| `sync_letta_memory.log` | Memory sync operation output |
+| `send_messages.log` | Main Stop hook output |
+| `send_worker_sdk.log` | SDK background worker output |
+| Transcript payload temp files | Written by the main Stop hook, read and deleted by the background worker |
+
+See [Debugging](/guides/debugging) for how to read these log files.
+
+## Multi-project layout
+
+One agent serves all projects. Each project maintains its own conversation threads, but memory blocks are shared:
+
+```
+~/.letta/claude-subconscious/config.json  →  ONE agent ID (shared brain)
+                                               ↓
+project-a/.letta/claude/                  →  Project A's conversation threads
+project-b/.letta/claude/                  →  Project B's conversation threads
+project-c/.letta/claude/                  →  Project C's conversation threads
+```
+
+To use a different agent for a specific project, set `LETTA_AGENT_ID` in that project's shell environment or via [direnv](https://direnv.net/):
+
+```bash
+# .envrc in project directory
+export LETTA_AGENT_ID="agent-xxx-for-this-project"
+```
+
+See [Multi-project usage](/configuration/multi-project) for more details.
+
+## Resetting state
+
+<Steps>
+
+<Step title="Reset the global config (force re-import)">
+
+Delete the config file to force the plugin to re-import the default agent on next session start:
+
+```bash
+rm ~/.letta/claude-subconscious/config.json
+```
+
+</Step>
+
+<Step title="Reset a project's conversation threads">
+
+Delete the `.letta/claude/` directory inside a project to clear that project's session-to-conversation mappings:
+
+```bash
+rm -rf .letta/claude/
+```
+
+The agent's memory blocks are not affected — only the conversation thread bookkeeping is cleared.
+
+</Step>
+
+</Steps>
+
+---
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Multi-project usage" href="/configuration/multi-project">
+    One agent across many projects
+  </Card>
+  <Card title="Environment variables" href="/configuration/environment-variables">
+    LETTA_HOME and other config options
+  </Card>
+  <Card title="Debugging" href="/guides/debugging">
+    Reading log files from the temp directory
+  </Card>
+  <Card title="Default agent" href="/agent/default-agent">
+    Memory blocks and agent behavior
+  </Card>
+</CardGroup>

@@ -1,0 +1,165 @@
+---
+title: "Stop hook"
+description: "Asynchronously sends the session transcript to the Letta agent after each response."
+---
+
+The `Stop` hook fires after every Claude Code response. It is the most complex hook in the system — and deliberately the most invisible. Using an async execution pattern, it spawns a background worker and exits immediately so Claude Code can continue without any delay.
+
+## Configuration
+
+```json
+{
+  "type": "command",
+  "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/silent-npx.cjs\" tsx \"${CLAUDE_PLUGIN_ROOT}/scripts/send_messages_to_letta.ts\"",
+  "timeout": 120,
+  "async": true
+}
+```
+
+| Property | Value |
+|----------|-------|
+| Script | `scripts/send_messages_to_letta.ts` |
+| Timeout | 120 seconds |
+| Async | Yes — declared as an async hook |
+| Matcher | `*` (all stops) |
+
+<Note>
+  Although the timeout in `hooks.json` is 120s, the main hook (`send_messages_to_letta.ts`) exits in under a second — it reads the transcript, prepares a payload, and spawns the background worker, then immediately returns. The timeout exists as a safety limit. Claude Code is never blocked because the hook is declared `async: true`.
+</Note>
+
+## Async execution pattern
+
+The hook is split into two stages that run independently:
+
+```
+Claude Code response ends
+        │
+        ▼
+ send_messages_to_letta.ts   ← main hook (exits fast)
+   1. Parse transcript JSONL
+   2. Build structured payload
+   3. Write payload to temp file
+   4. Spawn detached worker
+   5. Exit immediately
+        │
+        │  (detached, survives hook exit)
+        ▼
+   send_worker_sdk.ts         ← background worker
+   1. Open Letta Code SDK session
+   2. Give Sub client-side tools
+   3. Send transcript to Sub
+   4. Stream Sub's full response
+   5. Update lastProcessedIndex
+   6. Clean up temp file
+```
+
+Because the hook is declared `async: true`, Claude Code does not wait for it. The user sees the next prompt immediately.
+
+## Step 1: Main hook (`send_messages_to_letta.ts`)
+
+<Steps>
+  <Step title="Guard against infinite loops">
+    Checks `stop_hook_active` in the hook input. If it is `true`, the hook exits immediately to prevent the Stop hook from triggering itself recursively.
+  </Step>
+
+  <Step title="Parse the session transcript">
+    Reads the JSONL transcript file at `transcript_path` and parses all entries since `lastProcessedIndex`. Extracts:
+    - User messages
+    - Assistant responses (including thinking blocks)
+    - Tool uses and their results
+    - Timestamps
+  </Step>
+
+  <Step title="Build the transcript payload">
+    Each transcript entry is mapped to a role (`user`, `claude_code`, or `system`) and wrapped in a `<message>` element. The full payload is structured as:
+
+    ```xml
+    <claude_code_session_update>
+      <session_id>abc123</session_id>
+
+      <transcript>
+        <message role="user">
+          How does the retry logic work?
+        </message>
+        <message role="claude_code">
+          The retry logic is in src/client.ts...
+        </message>
+      </transcript>
+
+      <instructions>
+        You may provide commentary or guidance for Claude Code. Your response will be
+        added to Claude's context window on the next prompt...
+      </instructions>
+    </claude_code_session_update>
+    ```
+  </Step>
+
+  <Step title="Write payload to temp file and spawn worker">
+    Serializes the payload (including agent ID, conversation ID, session ID, state file path, and SDK tools mode) to a temp file at `$TMPDIR/letta-claude-sync-$UID/payload-{sessionId}-{timestamp}.json`.
+
+    Spawns `send_worker_sdk.ts` as a detached child process with `stdio: 'ignore'` and calls `child.unref()` so the worker survives the parent's exit. Then exits immediately.
+  </Step>
+</Steps>
+
+## Step 2: Background worker (`send_worker_sdk.ts`)
+
+<Steps>
+  <Step title="Load payload">
+    Reads the JSON payload file written by the main hook. The payload contains everything needed: agent ID, conversation ID, the formatted transcript message, and the SDK tools mode.
+  </Step>
+
+  <Step title="Open a Letta Code SDK session">
+    Calls `resumeSession(conversationId, options)` from `@letta-ai/letta-code-sdk`. The session options configure which client-side tools Sub is allowed to use, based on `LETTA_SDK_TOOLS`:
+
+    | `LETTA_SDK_TOOLS` | Tools available to Sub |
+    |-------------------|------------------------|
+    | `read-only` (default) | `Read`, `Grep`, `Glob`, `web_search`, `fetch_webpage` |
+    | `full` | All tools (Bash, Edit, Write, Task, and more) |
+    | `off` | None — memory operations only |
+
+    Interactive tools (`AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`) are always blocked.
+  </Step>
+
+  <Step title="Send transcript and stream response">
+    Sends the transcript payload to Sub via `session.send()`, then streams the full response with `session.stream()`. Sub can call tools (Read, Grep, Glob) while processing — exploring the codebase, looking things up, updating memory blocks.
+
+    The streamed response is automatically stored in the Letta conversation history on the server. The `UserPromptSubmit` and `PreToolUse` hooks will pick it up and inject it into Claude's context on the next prompt.
+  </Step>
+
+  <Step title="Update state and clean up">
+    On success, updates `lastProcessedIndex` in the session state file so the next Stop hook invocation only sends new transcript entries. Deletes the temp payload file.
+  </Step>
+</Steps>
+
+## Why async matters
+
+Sending a transcript to Sub and waiting for it to process, potentially read files, and generate a response can take many seconds. Doing this synchronously inside the Stop hook would add that latency to every response — before Claude could present the next prompt.
+
+The async pattern means:
+- The user sees the next prompt immediately
+- Sub runs in parallel while the user reads the response
+- By the time the user submits the next prompt, Sub's response is usually ready to inject
+
+<Tip>
+  In `full` SDK tools mode, Sub can spawn sub-agents via the `Task` tool — dispatching parallel research or delegating work to other agents while Claude Code continues working.
+</Tip>
+
+## Log files
+
+Two log files cover the two stages:
+
+```bash
+# Main hook
+tail -f /tmp/letta-claude-sync-$(id -u)/send_messages.log
+
+# Background worker
+tail -f /tmp/letta-claude-sync-$(id -u)/send_worker_sdk.log
+```
+
+## Related pages
+
+- [SessionStart hook](/hooks/session-start) — creates the conversation thread used here
+- [UserPromptSubmit hook](/hooks/user-prompt-submit) — injects Sub's response on the next prompt
+- [Agent: SDK tools](/agent/sdk-tools) — `LETTA_SDK_TOOLS` configuration
+- [Guides: debugging](/guides/debugging) — reading hook log files
+- [Guides: state management](/guides/state-management) — temp file and state file locations
